@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Environment variables / credentials — nunca subir claves reales
+.env
+.env.*
+!.env.example
+*.local
+
+# Credenciales de servicios en la nube (Google Cloud, service accounts, etc.)
+*.pem
+*.key
+*credential*.json
+*credentials*.json
+qualidot-*.json
+service-account*.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Metadatos de descarga de Windows/WSL
+*:Zone.Identifier
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

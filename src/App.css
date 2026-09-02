@@ -1,0 +1,435 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: #0f1115;
+  color: #f2f2f2;
+}
+
+.app {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 4rem;
+}
+
+h1 {
+  font-size: 1.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.source-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.button {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 8px;
+  border: 1px solid #333;
+  background: #1b1e26;
+  color: #f2f2f2;
+  padding: 0.75rem 1.25rem;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.button:hover:not(:disabled) {
+  border-color: #6c8cff;
+}
+
+.button:disabled,
+.button--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.button--source {
+  font-size: 1rem;
+  min-width: 140px;
+  text-align: center;
+}
+
+.button--primary {
+  background: #3a5bff;
+  border-color: #3a5bff;
+}
+
+.button--secondary {
+  background: transparent;
+}
+
+.status-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.85rem 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.25rem;
+  font-weight: 600;
+}
+
+.status-banner--selecting,
+.status-banner--uploading,
+.status-banner--processing {
+  background: #1e2a4a;
+  color: #9db4ff;
+}
+
+.status-banner--ready {
+  background: #14331f;
+  color: #7be8a0;
+}
+
+.status-banner--error {
+  background: #3a1a1a;
+  color: #ff9b9b;
+}
+
+.status-banner__message {
+  font-weight: 400;
+  font-size: 0.9rem;
+}
+
+.status-banner__elapsed {
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+.status-banner__progress-track {
+  position: relative;
+  margin-top: 0.6rem;
+  height: 0.6rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.status-banner__progress-fill {
+  height: 100%;
+  background: #6c8cff;
+  transition: width 0.2s ease;
+}
+
+.status-banner__progress-label {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+.video-player {
+  margin-top: 1.5rem;
+}
+
+.video-player__el {
+  width: 100%;
+  max-height: 70vh;
+  border-radius: 10px;
+  background: black;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.modal {
+  background: #1b1e26;
+  border: 1px solid #333;
+  border-radius: 10px;
+  padding: 1.5rem;
+  width: 100%;
+  max-width: 420px;
+}
+
+.modal h2 {
+  margin-top: 0;
+  font-size: 1.15rem;
+}
+
+.modal input[type='url'] {
+  width: 100%;
+  font: inherit;
+  padding: 0.6rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid #333;
+  background: #0f1115;
+  color: #f2f2f2;
+}
+
+.modal__error {
+  color: #ff9b9b;
+  font-size: 0.85rem;
+  margin: 0.5rem 0 0;
+}
+
+.modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+.analysis-panel {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #333;
+}
+
+.analysis-panel h2 {
+  font-size: 1.25rem;
+  margin: 0 0 1rem;
+}
+
+.analysis-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.analysis-panel__error {
+  color: #ff9b9b;
+  font-size: 0.9rem;
+  margin: 0 0 1rem;
+}
+
+.analysis-panel__feedback {
+  color: #cfd3da;
+  font-size: 0.9rem;
+  margin: 0 0 1rem;
+}
+
+.analysis-panel__offline {
+  margin-bottom: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px dashed #333;
+}
+
+.analysis-panel__offline .analysis-panel__feedback {
+  margin-bottom: 0.75rem;
+}
+
+.analysis-panel__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.analysis-panel__table th {
+  text-align: left;
+  border-bottom: 1px solid #333;
+  padding: 0.5rem;
+  color: #9aa0aa;
+}
+
+.analysis-panel__table td {
+  border-bottom: 1px solid #22252c;
+  padding: 0.5rem;
+  vertical-align: top;
+}
+
+.analysis-panel__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.button--active {
+  background: #3a5bff;
+  border-color: #3a5bff;
+}
+
+.timestamp-link {
+  font: inherit;
+  cursor: pointer;
+  border: none;
+  background: #1e2a4a;
+  color: #9db4ff;
+  border-radius: 6px;
+  padding: 0.15rem 0.5rem;
+  white-space: nowrap;
+}
+
+.timestamp-link:hover {
+  background: #2a3a63;
+}
+
+.raw-content-view__header {
+  margin-bottom: 1rem;
+}
+
+.raw-content-view__empty {
+  color: #9aa0aa;
+  font-size: 0.9rem;
+}
+
+.raw-content-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.raw-content-list__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid #22252c;
+}
+
+.raw-content-list__label {
+  color: #9db4ff;
+  font-weight: 600;
+}
+
+.raw-content-list__text {
+  color: #f2f2f2;
+  flex: 1;
+  min-width: 60%;
+}
+
+.evidence-list {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.evidence-list__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.evidence-list__text {
+  color: #9aa0aa;
+  font-style: italic;
+}
+
+.coordenadas-panel {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #333;
+}
+
+.coordenadas-panel h2 {
+  font-size: 1.25rem;
+  margin: 0 0 1rem;
+}
+
+.coordenadas-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.coordenadas-panel__toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: #cfd3da;
+}
+
+.coordenadas-panel__error {
+  color: #ff9b9b;
+  font-size: 0.9rem;
+  margin: 0 0 1rem;
+}
+
+.coordenadas-panel__status {
+  color: #9aa0aa;
+  font-size: 0.85rem;
+  margin: 0 0 1rem;
+}
+
+/* Cuadros dibujados sobre el <video>, posicionados con position: fixed en
+   coordenadas de viewport (calculadas desde getBoundingClientRect del
+   propio <video>) — no dependen del DOM interno de VideoPlayer. */
+.coordenadas-overlay-box {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  border: 2px solid #6c8cff;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+.coordenadas-overlay-box.is-active {
+  opacity: 1;
+}
+
+.coordenadas-overlay-box--low-confidence {
+  border-style: dashed;
+}
+
+.coordenadas-overlay-box--low-confidence.is-active {
+  opacity: 0.65;
+}
+
+/* Banner de texto para cambio_entorno/descripcion_foco -- SIN bbox (no hay
+   posición en el frame, solo una ventana de tiempo), así que en vez de un
+   cuadro puntual es una franja fija en la parte SUPERIOR del video (evita
+   superponerse con los controles nativos del <video>, que viven abajo). */
+.coordenadas-entorno-banner {
+  position: fixed;
+  z-index: 41;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.4rem 0.75rem;
+  background: rgba(15, 17, 21, 0.85);
+  color: #f2f2f2;
+  font-size: 0.8rem;
+  border-bottom: 1px solid rgba(108, 140, 255, 0.4);
+}
+
+.coordenadas-entorno-banner__item {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.coordenadas-overlay-box__label {
+  position: absolute;
+  bottom: 100%;
+  left: -2px;
+  margin-bottom: 0.2rem;
+  max-width: max-content;
+  background: rgba(15, 17, 21, 0.9);
+  color: #f2f2f2;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  white-space: nowrap;
+}
