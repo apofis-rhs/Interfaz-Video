@@ -3,9 +3,11 @@
 Frontend standalone (React + Vite + TypeScript) para subir un video desde 5
 orígenes — **Local, Google Drive, OneDrive, Dropbox, YouTube** —, mostrarlo en
 un `<video>` grande al terminar, y disparar un análisis rubricado con IA sobre
-ese video. Sin chunking del lado del cliente: se sube el archivo completo en
-una sola operación (con streaming pipe para los proveedores externos, ver
-sección 6).
+ese video (pipeline v3, con tabs de Score/Transcripción/Momentos visuales —
+ver sección 7), además de un overlay opcional de coordenadas visuales sobre
+el propio `<video>` (ver [GROUNDING_OVERLAY.md](GROUNDING_OVERLAY.md)). Sin
+chunking del lado del cliente: se sube el archivo completo en una sola
+operación (con streaming pipe para los proveedores externos, ver sección 6).
 
 Este documento explica qué había en la carpeta antes de empezar, qué se creó,
 qué se modificó, cómo se conecta todo, y el estado actual de cada pieza.
@@ -49,13 +51,22 @@ YouTube        →  pegar URL → POST /upload/from-url (source: youtube, yt-dlp
                                           poll GET /upload/{video_id}/status
 
 ── Con el video listo ──
-AnalysisPanel  →  adjuntar JSON de rúbrica → POST /api/v2/iniciar-analisis {video_id, rubric}
-                                          poll GET /api/v2/video/analisis/{video_id}  (cada 3s)
+CoordenadasPanel → (opcional) cargar JSON de coordenadas → cuadros/banners dibujados
+                    sobre el <video> en vivo (ver GROUNDING_OVERLAY.md, sin backend)
+
+AnalysisPanel  →  adjuntar JSON de rúbrica → POST /api/v3/video/iniciar-analisis {video_id, rubric}
+                                          poll GET /api/v3/video/analisis/{video_id}  (cada 3s)
                                                      │
-                                          status: done → tabla de criterios + score total
+                                          status: done → tab "Score": árbol de criterios + score total
+                                                          tab "Transcripción": GET /api/v3/video/{id}/transcripcion
+                                                          tab "Momentos visuales": GET /api/v3/video/{id}/momentos-visuales
+              →  alternativa sin backend: cargar una carpeta de corrida ya
+                 calificada (evaluation_tree.json + visuals.json +
+                 transcripcion_es.json) y ver los 3 tabs sin disparar nada
 ```
 
-Estados de subida (`UploadPhase`): `idle → uploading → processing → ready | error`.
+Estados de subida (`UploadPhase`): `idle → selecting → uploading → processing → ready | error`
+(`selecting` solo para Drive/OneDrive/Dropbox, mientras el usuario hace login/elige archivo en el picker nativo — Local y YouTube saltan directo a `uploading`).
 Estados de análisis (`AnalysisPhase`): `idle → running → completed | failed`.
 
 ---
@@ -83,11 +94,14 @@ chunkInterface/
     │   ├── types.ts              # Tipos compartidos de subida (UploadSource, UploadPhase, requests/responses)
     │   ├── uploadApi.ts          # fetch/XHR wrappers de los 3 endpoints de subida (v1)
     │   ├── analysisApi.ts        # v1 del análisis (/video/evaluations/links) — sin uso, se dejó a propósito
-    │   └── analysisApiV2.ts      # v2 del análisis (/api/v2/video/...) — la que realmente usa AnalysisPanel
+    │   ├── analysisApiV2.ts      # v2 del análisis (/api/v2/video/...) — reemplazada por v3, sin uso, se dejó a propósito
+    │   ├── analysisApiV3.ts      # v3 del análisis (/api/v3/video/...) — la que realmente usa AnalysisPanel (ver sección 7)
+    │   ├── rawContentApiV3.ts    # GET .../transcripcion y .../momentos-visuales (tabs de TranscriptView/VisualMomentsView)
+    │   └── offlineResultsV3.ts   # Arma un resultado v3 completo a partir de 3 JSON de una corrida ya calificada (sin backend)
     │
     ├── hooks/
     │   ├── useVideoUpload.ts     # Máquina de estados de subida (ver sección 4)
-    │   └── useVideoAnalysis.ts   # Máquina de estados del análisis v2 (ver sección 6)
+    │   └── useVideoAnalysis.ts   # Máquina de estados del análisis v3 (ver sección 7)
     │
     ├── providers/
     │   ├── types.ts               # PickedFile = { filename, contentType, size, stream }
@@ -100,14 +114,18 @@ chunkInterface/
     │   ├── loadScript.ts          # Inyecta <script> una sola vez (usado por Google)
     │   ├── logger.ts              # console.info/error con prefijo + formatBytes/formatElapsed
     │   ├── sourceValidation.ts    # Labels de los 5 botones + regex de validación de URL (YouTube)
-    │   └── videoContentType.ts    # Content-types permitidos + inferencia por extensión
+    │   ├── videoContentType.ts    # Content-types permitidos + inferencia por extensión
+    │   └── formatTimestamp.ts     # segundos ↔ "MM:SS"/"H:MM:SS", usado por transcripción/momentos visuales/evidencia
     │
     └── components/
         ├── SourcePicker.tsx        # Los 5 botones de origen
         ├── UrlSourceModal.tsx      # Modal "pegar URL" (hoy solo lo usa YouTube)
         ├── StatusBanner.tsx        # Subiendo/Procesando/Listo/Error + barra de progreso + tiempo total
         ├── VideoPlayer.tsx         # <video controls autoPlay> cuando status === "ready"
-        └── AnalysisPanel.tsx       # Adjuntar rúbrica JSON + disparar/mostrar el análisis v2
+        ├── CoordenadasPanel.tsx    # Overlay de cuadros/banners sobre el <video> a partir de un JSON aparte (ver GROUNDING_OVERLAY.md)
+        ├── AnalysisPanel.tsx       # Adjuntar rúbrica JSON + disparar/mostrar el análisis v3, con 3 tabs (ver sección 7)
+        ├── TranscriptView.tsx      # Tab "Transcripción" (en vivo o desde carga offline)
+        └── VisualMomentsView.tsx   # Tab "Momentos visuales" (en vivo o desde carga offline)
 ```
 
 ---
@@ -124,6 +142,14 @@ Expone:
 Estado expuesto: `phase`, `errorMessage`, `readUrl`, `videoId` (necesario para
 `AnalysisPanel`), `startedAt`, `progress` (0-100, solo durante `uploading`),
 `elapsedMs` (tiempo total congelado al llegar a `ready`).
+
+`phase` (`UploadPhase`) pasa por `idle → selecting → uploading → processing →
+ready | error`. `selecting` es exclusiva de Drive/OneDrive/Dropbox — cubre el
+tiempo de login + elegir archivo en el picker nativo del proveedor, que
+controla el usuario, no la red; por eso `startedAt`/`elapsedMs` arrancan
+recién al entrar a `uploading` (ver comentario en `uploadToGcs`), y no
+incluyen ese tiempo. Local y YouTube no tienen picker externo que esperar,
+así que saltan directo de `idle` a `uploading`.
 
 Internamente, **todo excepto YouTube converge en `uploadToGcs(filename, contentTypeHint, size, body)`**,
 donde `body` es un `Blob` (Local) o un `ReadableStream<Uint8Array>` (los 3
@@ -250,27 +276,88 @@ botones:
 1. **"Agregar JSON"** — abre el selector de archivos, valida que sea JSON
    parseable y que tenga el wrapper esperado por el backend
    (`{ "rubric": { "id": ..., "criteria": [...] } }`) antes de aceptarlo.
-2. **"Empezar análisis"** — deshabilitado hasta que haya rúbrica adjunta.
-   Llama a `POST /api/v2/video/iniciar-analisis { video_id, rubric }`.
+2. **"Empezar análisis"** — deshabilitado hasta que haya rúbrica adjunta (o
+   si hay un resultado offline cargado, ver 7.2). Llama a
+   `POST /api/v3/video/iniciar-analisis { video_id, rubric }`.
 
-Después hace polling cada 3s a `GET /api/v2/video/analisis/{video_id}` hasta
-`done` (muestra tabla recursiva de criterios con score/feedback y el score
-total) o `error`/`not_found` (terminal, con botón de reintento).
+Después hace polling cada 3s a `GET /api/v3/video/analisis/{video_id}` hasta
+`done` (guarda `resultado.evaluation_tree`, ver 7.1) o `error`/`not_found`
+(terminal, con botón de reintento).
 
-**Importante sobre el pipeline v2**: el backend detrás de estos dos
-endpoints (`app/services/video_v2/`, chunking + embeddings + retrieval +
-análisis multimodal) **ya existía en `ia-microservice2` y no fue construido
-en esta conversación** — solo se verificó su contrato real
-(`app/services/video_v2/analysis_api/router.py`) y se conectó el frontend
-contra él. Registro de estado del análisis: en memoria en el proceso del
-backend (`_analysis_registry`), se pierde si el backend se reinicia — por
-eso `not_found` se trata como error terminal en el frontend, no como algo
-para reintentar el polling.
+**Importante sobre el pipeline v3**: el backend detrás de estos endpoints
+(`app/services/video_v3/`, en `ia-microservice2`) reemplazó al pipeline v2
+(chunking + análisis multimodal por chunk + scoring + consolidación).
+Registro de estado del análisis: en memoria en el proceso del backend, se
+pierde si el backend se reinicia — por eso `not_found` se trata como error
+terminal en el frontend, no como algo para reintentar el polling.
 
-Existe también `src/api/analysisApi.ts`, un cliente para el endpoint v1
-(`/api/v1/video/evaluations/links`) que sí existía antes y que se probó
-funcional — **no lo usa ningún componente hoy**, se dejó sin borrar a
-petición explícita.
+Quedaron como código muerto, sin usarlos ningún componente hoy (se dejaron
+sin borrar a propósito, como referencia de contratos anteriores):
+`src/api/analysisApi.ts` (v1, `/api/v1/video/evaluations/links`) y
+`src/api/analysisApiV2.ts` (v2, `/api/v2/video/...`, reemplazada por v3 —
+ver el comentario al tope de `analysisApiV3.ts` para el diff de contrato
+exacto entre ambas).
+
+### 7.1 El árbol de criterios (`FinalEvaluationTreeV3`)
+
+A diferencia de v2, v3 mezcla escalas en el mismo árbol (`formatScore` en
+`AnalysisPanel.tsx`):
+
+- Hojas `type_criteria: "primary"` puntúan `0-10` (`score`, con `nivel`:
+  `EXC | BUE | REG | BAJ | NULO`).
+- Nodos intermedios y raíces puntúan `0-100`.
+- Hojas `type_criteria: "secondary"` no tienen `score` numérico — solo
+  `detected` (booleano, se muestra como "✓ Detectado" / "✗ No detectado").
+
+Cada nodo trae su evidencia en **dos listas separadas por modalidad**
+(nunca una sola lista mixta): `evidencia_visual` (con `chunk_number`, `id`,
+`inicio`/`fin` en segundos ya resueltos, `explicación`) y
+`evidencia_auditiva` (además `cita_textual`, `palabra_exacta` opcional,
+`longitud_evidencia: 'seccion' | 'momento' | 'palabra'`). Cada línea de
+evidencia en la tabla tiene un botón con el rango de tiempo que hace
+`onSeek(inicio)` — mueve el `<video>` real (montado en `VideoPlayer`, vía la
+`ref` que `App.tsx` puentea hacia `AnalysisPanel`/`CoordenadasPanel`) a ese
+punto y lo reproduce.
+
+### 7.2 Los 3 tabs: Score / Transcripción / Momentos visuales
+
+`GET /api/v3/video/analisis/{video_id}` no devuelve el árbol directo — el
+`status.resultado` es un `VideoV3Result` completo (`transcript` + `subjects`
++ `momentos_visuales` + `evaluation_tree` + `merged_timeline` +
+`time_elapsed_seconds`); `useVideoAnalysis` solo guarda `evaluation_tree`
+para el tab **Score**. Los otros dos tabs piden sus propios datos, en vivo,
+por endpoints aparte (`rawContentApiV3.ts`):
+
+- **Transcripción** (`TranscriptView.tsx`) → `GET /api/v3/video/{id}/transcripcion`.
+  Timestamps como string `"MM:SS"` (`parseTimestampToSeconds` los convierte
+  para el botón de seek).
+- **Momentos visuales** (`VisualMomentsView.tsx`) → `GET /api/v3/video/{id}/momentos-visuales`.
+  Timestamps ya en segundos (número). **No es el mismo formato que
+  transcripción** — no asumir uno por el otro.
+
+Ambos tabs tienen su propio botón "Actualizar" (no dependen del polling del
+tab Score) y toleran "todavía no hay nada" sin romperse mientras el análisis
+sigue corriendo.
+
+### 7.3 Cargar un resultado ya calificado, sin backend (`offlineResultsV3.ts`)
+
+Debajo de los dos botones de rúbrica hay un tercer selector, **"Cargar
+carpeta de resultado ya calificado"** (`multiple`, acepta varios `.json` a
+la vez): sirve para revisar sin volver a analizar un video que ya se corrió
+antes con `video_v3/test.py` en el backend. Se identifican por *substring*
+del nombre de archivo (no por orden de selección) los 3 que hacen falta de
+esa carpeta —`evaluation_tree.json`, `visuals.json`, `transcripcion_es.json`
+— y se ignora cualquier otro archivo que venga junto (ej.
+`transcription.json`, `resumen.json`). `buildOfflineResult` cruza los 3 (los
+IDs de evidencia en `evaluation_tree.json` son solo referencias sin
+inicio/fin; hay que resolverlos contra `visuals.json`/`transcripcion_es.json`
+por `id`, mismo trabajo que en producción hace `tree_reconstruction.py` del
+lado del backend) y arma el mismo shape que ya consumen los 3 tabs cuando
+vienen del backend en vivo — mientras haya un resultado offline cargado,
+reemplaza al análisis en vivo en los 3 tabs sin tocar el video ni disparar
+ningún análisis nuevo (mismo criterio client-side que ya usa
+`CoordenadasPanel.tsx` con su propio JSON). Un botón "Quitar resultado
+cargado" vuelve al modo en vivo.
 
 ---
 
@@ -303,8 +390,14 @@ existía, ver sección 7).
 | `PUT {upload_session_url}` | GCS directo, sin backend de por medio | Idem |
 | `GET /api/v1/upload/{video_id}/status` | Implementado | Los 5 orígenes hacen polling aquí hasta `ready` |
 | `POST /api/v1/upload/from-url` | Implementado | Solo YouTube — descarga vía `yt-dlp` |
-| `POST /api/v2/video/iniciar-analisis` | Ya existía (pipeline video_v2) | `AnalysisPanel` |
-| `GET /api/v2/video/analisis/{video_id}` | Ya existía (pipeline video_v2) | Polling de `AnalysisPanel` |
+| `POST /api/v3/video/iniciar-analisis` | Pipeline `video_v3` (reemplazó a v2) | `AnalysisPanel`, tab Score |
+| `GET /api/v3/video/analisis/{video_id}` | Pipeline `video_v3` | Polling del tab Score |
+| `GET /api/v3/video/{video_id}/transcripcion` | Pipeline `video_v3` | Tab Transcripción (`TranscriptView`) |
+| `GET /api/v3/video/{video_id}/momentos-visuales` | Pipeline `video_v3` | Tab Momentos visuales (`VisualMomentsView`) |
+
+El backend sigue exponiendo `/api/v2/video/...` (pipeline `video_v2`), pero
+el frontend ya no lo llama — `analysisApiV2.ts` quedó como código muerto de
+referencia (ver sección 7).
 
 ### Limitación conocida de YouTube
 

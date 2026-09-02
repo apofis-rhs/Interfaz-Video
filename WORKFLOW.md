@@ -32,9 +32,13 @@ Todo converge en el mismo hook, `useVideoUpload.ts`, que expone una
 máquina de estados (`UploadPhase`):
 
 ```
-idle → uploading → processing → ready
-                 ↘ error (desde cualquier punto)
+idle → selecting → uploading → processing → ready
+                              ↘ error (desde cualquier punto)
 ```
+
+`selecting` solo aplica a Drive/OneDrive/Dropbox (login + elegir archivo en
+el picker nativo); Local y YouTube no tienen picker externo que esperar y
+pasan directo de `idle` a `uploading`.
 
 ### 2a. Local (`<input type=file>`)
 - `startLocalUpload(file)` toma el `File` directo del input.
@@ -107,20 +111,34 @@ Fase pasa directo a `processing` y arranca el mismo polling de
 
 ---
 
-## 5. Video listo → reproducción + análisis
+## 5. Video listo → reproducción + análisis + overlay
 
 Cuando `phase === 'ready'`:
 
-1. `VideoPlayer` monta un `<video controls autoPlay src={readUrl}>`.
-2. `AnalysisPanel` aparece debajo, recibe `videoId`, y permite:
-   - Adjuntar un JSON de rúbrica (`{ "rubric": { "id", "criteria": [...] } }`).
-   - Disparar `POST /api/v2/video/iniciar-analisis { video_id, rubric }`.
-   - Hacer polling cada 3s a `GET /api/v2/video/analisis/{video_id}`
-     hasta `done` (tabla de criterios + score) o `error`/`not_found`
-     (terminal).
+1. `VideoPlayer` monta un `<video controls autoPlay src={readUrl}>` — la
+   `ref` a ese elemento vive en `App.tsx` y se puentea (`seekTo`) hacia
+   `AnalysisPanel`/`CoordenadasPanel`, que no tienen acceso directo al
+   `<video>`.
+2. `AnalysisPanel` aparece debajo, recibe `videoId` + `onSeek`, y permite:
+   - Adjuntar un JSON de rúbrica (`{ "rubric": { "id", "criteria": [...] } }`)
+     y disparar `POST /api/v3/video/iniciar-analisis { video_id, rubric }`,
+     con polling cada 3s a `GET /api/v3/video/analisis/{video_id}` hasta
+     `done` o `error`/`not_found` (terminal) — resultado en el tab **Score**.
+   - Alternativa sin backend: cargar los 3 JSON de una carpeta de corrida ya
+     calificada (`evaluation_tree.json` + `visuals.json` +
+     `transcripcion_es.json`) y ver el mismo Score sin analizar de nuevo.
+   - Dos tabs más, con datos en vivo o desde la misma carga offline: **Transcripción**
+     (`GET /api/v3/video/{id}/transcripcion`) y **Momentos visuales**
+     (`GET /api/v3/video/{id}/momentos-visuales`). Cada línea de evidencia/
+     transcripción/momento tiene un botón de timestamp que hace seek en el
+     `<video>` real.
+3. `CoordenadasPanel` también aparece, en paralelo — overlay opcional que
+   dibuja cuadros/banners sobre el propio `<video>` a partir de un JSON
+   aparte (cargado a mano, sin backend). Ver
+   [GROUNDING_OVERLAY.md](GROUNDING_OVERLAY.md) para el detalle completo.
 
-Este segundo flujo (análisis) es independiente del de subida — corre en
-su propio hook, `useVideoAnalysis.ts`, con su propia máquina de estados
+El flujo de análisis es independiente del de subida — corre en su propio
+hook, `useVideoAnalysis.ts`, con su propia máquina de estados
 (`AnalysisPhase`).
 
 ---
@@ -150,12 +168,19 @@ su propio hook, `useVideoAnalysis.ts`, con su propia máquina de estados
                                     status: ready
                                           │
                                           ▼
-                            <video src={readUrl}> + AnalysisPanel
+                 <video src={readUrl}> + AnalysisPanel + CoordenadasPanel
                                           │
-                              (opcional) subir rúbrica JSON
-                              → POST /iniciar-analisis
-                              → poll GET /analisis/{id} cada 3s
-                              → tabla de criterios + score
+                    ┌─────────────────────┼─────────────────────┐
+                    │                     │                     │
+            (opcional) rúbrica    (opcional) carpeta    (opcional) JSON de
+            JSON → POST /v3/      ya calificada →       coordenadas → cuadros/
+            iniciar-analisis →    3 tabs sin backend     banners sobre el
+            poll GET /v3/                                <video> (overlay,
+            analisis/{id}                                sin backend)
+                    │
+                    ▼
+        tabs: Score (criterios+score) · Transcripción (GET .../transcripcion)
+              · Momentos visuales (GET .../momentos-visuales)
 ```
 
 **Dónde mirar los logs**: consola del navegador (F12 → Console, prefijo
